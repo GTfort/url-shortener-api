@@ -2,13 +2,55 @@ version: "3.8"
 services:
   redis:
     image: redis:7-alpine
-    container_name: redis-server
+    container_name: url-shortener-redis
     ports:
       - "6379:6379"
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
+    networks:
+      - app-network
+
+  mongo:
+    image: mongo:6
+    container_name: url-shortener-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: urlshortener
+    volumes:
+      - mongo-data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: url-shortener-app
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONGO_URI: mongodb://admin:password123@mongo:27017/urlshortener?authSource=admin
+      JWT_SECRET: your-secret-key-change-this
+      BASE_URL: http://localhost:3000
+    depends_on:
+      - redis
+      - mongo
+    networks:
+      - app-network
+    restart: unless-stopped
 
 volumes:
   redis-data:
+  mongo-data:
+
+networks:
+  app-network:
+    driver: bridge

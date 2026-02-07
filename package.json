@@ -4,14 +4,17 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GTfort/url-shortener-api.git"
   },
   "keywords": [],
-  "author": "",
+  "author": "Fortune Itode",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/GTfort/url-shortener-api/issues"
@@ -24,6 +27,14 @@
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "nanoid": "^5.1.6",
-    "redis": "^5.10.0"
+    "redis": "^5.10.0",
+    "mongoose": "^7.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "bcryptjs": "^2.4.3",
+    "express-rate-limit": "^6.0.0",
+    "express-validator": "^6.15.0",
+    "qrcode": "^1.5.3",
+    "winston": "^3.8.0",
+    "express-mongo-sanitize": "^2.2.0"
   }
 }

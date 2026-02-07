@@ -1,4 +1,5 @@
 const redis = require("redis");
+const logger = require("./utils/logger");
 
 class RedisClient {
   constructor() {
@@ -10,52 +11,70 @@ class RedisClient {
       password: process.env.REDIS_PASSWORD || "",
     });
 
-    this.client.on("error", (err) => console.error("Redis Error:", err));
-    this.client.on("connect", () => console.log("Connected to Redis"));
+    this.client.on("error", (err) => logger.error("Redis Error:", err));
+    this.client.on("connect", () => logger.info("Connected to Redis"));
 
-    // Explicitly connect (Required in v4+)
-    this.client.connect().catch(console.error);
+    // REQUIRED in v4+: Explicitly initiate connection
+    this.client
+      .connect()
+      .catch((err) => logger.error("Initial Connection Error:", err));
   }
 
-  // Store URL with expiration (default 24 hours)
-  async setURL(shortCode, longUrl, expiry = 86400) {
-    // In v4, use setEx or set with an options object
-    await this.client.setEx(`url:${shortCode}`, expiry, longUrl);
+  // Cache URLs with different TTLs
+  async cacheURL(shortCode, longUrl, userId = null) {
+    const key = `url:${shortCode}`;
+    const userKey = userId ? `user:${userId}:url:${shortCode}` : null;
+    const ttl = userId ? 7 * 86400 : 86400;
+
+    // v4 uses setEx or set with an options object
+    await this.client.setEx(key, ttl, longUrl);
+    if (userKey) await this.client.setEx(userKey, ttl, longUrl);
   }
 
-  // Get URL by short code
   async getURL(shortCode) {
-    return await this.client.get(`url:${shortCode}`);
-  }
-
-  // Check if short code exists
-  async exists(shortCode) {
-    // Note: exists() in v4 returns a number (0 or 1)
-    return await this.client.exists(`url:${shortCode}`);
-  }
-
-  // Increment click counter
-  async incrementClicks(shortCode) {
-    const key = `clicks:${shortCode}`;
-    await this.client.incr(key);
-  }
-
-  // Get click count
-  async getClicks(shortCode) {
-    const val = await this.client.get(`clicks:${shortCode}`);
-    return val ? parseInt(val) : 0;
-  }
-
-  // Rate limiting
-  async rateLimit(ip, window = 3600, max = 100) {
-    const key = `rate:${ip}`;
-    const current = await this.client.incr(key);
-
-    if (current === 1) {
-      await this.client.expire(key, window);
+    const key = `url:${shortCode}`;
+    const cached = await this.client.get(key); // Natively returns a Promise
+    if (cached) {
+      await this.client.expire(key, 86400);
+      return cached;
     }
+    return null;
+  }
 
-    return current <= max;
+  async invalidateURL(shortCode, userId = null) {
+    const keys = [`url:${shortCode}`];
+    if (userId) {
+      keys.push(
+        `user:${userId}:url:${shortCode}`,
+        `analytics:${shortCode}`,
+        `clicks:${shortCode}`,
+      );
+    }
+    // del can take an array or multiple arguments
+    await this.client.del(keys);
+    logger.info(`Cache invalidated for ${shortCode}`);
+  }
+
+  async storeAnalytics(shortCode, data) {
+    const key = `analytics:${shortCode}`;
+    const timestamp = Date.now().toString();
+    // hSet accepts key, field, value
+    await this.client.hSet(key, timestamp, JSON.stringify(data));
+    await this.client.expire(key, 30 * 86400);
+  }
+
+  async getAnalytics(shortCode, startTime, endTime) {
+    const key = `analytics:${shortCode}`;
+    const allData = await this.client.hGetAll(key); // Returns an object in v4
+
+    if (!allData || Object.keys(allData).length === 0) return [];
+
+    return Object.entries(allData)
+      .filter(([timestamp]) => {
+        const ts = parseInt(timestamp);
+        return ts >= startTime && ts <= endTime;
+      })
+      .map(([_, data]) => JSON.parse(data));
   }
 }
 
